@@ -1,0 +1,211 @@
+{
+ "_": "자동 생성 — test/_snapshot.ts 로 갱신한다. 손으로 고치지 않는다.",
+ "asOf": "2026-08-13",
+ "openingCash": 80000000,
+ "warnLine": 50000000,
+ "g1": {
+  "weeks": 23,
+  "months": 5,
+  "totalIn": 2500821318,
+  "totalOut": 2132100000,
+  "endCash": 448721318,
+  "minCash": 71500000,
+  "minCode": "W01",
+  "bottom": null,
+  "shortfall": 0,
+  "unpaid": 0
+ },
+ "g2": {
+  "arOnly": 2131821318,
+  "plusWon": 2204821318,
+  "plusPipe": 2343321318,
+  "all": 2573821318,
+  "arPlusNew": 2500821318,
+  "soloAr": 2131821318,
+  "soloWon": 73000000,
+  "soloPipe": 138500000,
+  "soloNewSales": 369000000
+ },
+ "g5": {
+  "buckets": {
+   "정상": 1687340000,
+   "30일": 16420000,
+   "60일": 64830000,
+   "90일": 19700000,
+   "90일초과": 44770000,
+   "회수예정일 미정": 259000000
+  },
+  "total": 2092060000,
+  "over60": 129300000,
+  "internalTotal": 223000000,
+  "negativeCount": 11,
+  "negativeSum": -47870000
+ },
+ "g7": [
+  {
+   "rate": 1,
+   "totalIn": 2500821318,
+   "endCash": 448721318,
+   "minCode": "W01",
+   "minCash": 71500000,
+   "bottom": null,
+   "shortfall": 0,
+   "unpaid": 0
+  },
+  {
+   "rate": 0.8,
+   "totalIn": 2481794542,
+   "endCash": 429694542,
+   "minCode": "W01",
+   "minCash": 71500000,
+   "bottom": null,
+   "shortfall": 0,
+   "unpaid": 19026776
+  },
+  {
+   "rate": 0.5,
+   "totalIn": 2409582349,
+   "endCash": 357482349,
+   "minCode": "W03",
+   "minCash": 39770000,
+   "bottom": null,
+   "shortfall": 10230000,
+   "unpaid": 91238969
+  },
+  {
+   "rate": 0.35,
+   "totalIn": 2324704384,
+   "endCash": 272604384,
+   "minCode": "W05",
+   "minCash": -33591422,
+   "bottom": "W05",
+   "shortfall": 83591422,
+   "unpaid": 176116934
+  },
+  {
+   "rate": 0.25,
+   "totalIn": 2213401738,
+   "endCash": 161301738,
+   "minCode": "W05",
+   "minCash": -100407187,
+   "bottom": "W03",
+   "shortfall": 150407187,
+   "unpaid": 287419580
+  },
+  {
+   "rate": 0.15,
+   "totalIn": 1964331219,
+   "endCash": -87768781,
+   "minCode": "W13",
+   "minCash": -250978401,
+   "bottom": "W03",
+   "shortfall": 300978401,
+   "unpaid": 536490099
+  },
+  {
+   "rate": 0.1,
+   "totalIn": 1692695942,
+   "endCash": -359404058,
+   "minCode": "W13",
+   "minCash": -430298063,
+   "bottom": "W03",
+   "shortfall": 480298063,
+   "unpaid": 808125376
+  },
+  {
+   "rate": 0,
+   "totalIn": 0,
+   "endCash": -2052100000,
+   "minCode": "W23",
+   "minCash": -2052100000,
+   "bottom": "W03",
+   "shortfall": 2102100000,
+   "unpaid": 2500821318
+  }
+ ],
+ "g8": [
+  {
+   "entity": null,
+   "totalIn": 2500821318,
+   "totalOut": 2132100000,
+   "endCash": 448721318,
+   "minCode": "W01",
+   "minCash": 71500000
+  },
+  {
+   "entity": "법인A",
+   "totalIn": 791767578,
+   "totalOut": 1091230000,
+   "endCash": -219462422,
+   "minCode": "W22",
+   "minCash": -224789925
+  },
+  {
+   "entity": "법인B",
+   "totalIn": 1709053740,
+   "totalOut": 1040870000,
+   "endCash": 748183740,
+   "minCode": "W01",
+   "minCash": 75750000
+  }
+ ],
+ "g9": {
+  "targetId": "i38",
+  "targetItem": "차입금 이자 (39차)",
+  "targetAmount": 45590000,
+  "targetDate": "2026-11-18",
+  "baseTotalOut": 2132100000,
+  "baseEndCash": 448721318,
+  "deferDefault": {
+   "W17": -45590000,
+   "W21": 45590000
+  },
+  "cancel": {
+   "delta": {
+    "W17": -45590000
+   },
+   "totalOut": 2086510000,
+   "endCash": 494311318
+  },
+  "deferOut": {
+   "delta": {
+    "W17": -45590000
+   },
+   "totalOut": 2086510000
+  }
+ },
+ "r5": {
+  "newSalesByRow": {
+   "8월 매출분 회수": 108000000,
+   "9월 매출분 회수": 30000000,
+   "10월 매출분 회수": 92500000
+  },
+  "pipelineExpected": 138500000,
+  "grossNewSales": 369000000
+ },
+ "weekLabels": {
+  "W01": "8/1~8/2",
+  "W02": "8/3~8/9",
+  "W03": "8/10~8/16",
+  "W04": "8/17~8/23",
+  "W05": "8/24~8/30",
+  "W06": "8/31~9/6",
+  "W07": "9/7~9/13",
+  "W08": "9/14~9/20",
+  "W09": "9/21~9/27",
+  "W10": "9/28~10/4",
+  "W11": "10/5~10/11",
+  "W12": "10/12~10/18",
+  "W13": "10/19~10/25",
+  "W14": "10/26~11/1",
+  "W15": "11/2~11/8",
+  "W16": "11/9~11/15",
+  "W17": "11/16~11/22",
+  "W18": "11/23~11/29",
+  "W19": "11/30~12/6",
+  "W20": "12/7~12/13",
+  "W21": "12/14~12/20",
+  "W22": "12/21~12/27",
+  "W23": "12/28~12/31"
+ }
+}

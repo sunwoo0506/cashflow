@@ -1,0 +1,17 @@
+node_modules/
+.pnpm-store/
+dist/
+.next/
+*.tsbuildinfo
+.env*
+!.env.example
+.DS_Store
+
+# Supabase DB 비밀번호 (절대 커밋 금지)
+.supabase-db-password.local
+.supabase/
+
+.vercel
+.env*
+
+.vercel/
