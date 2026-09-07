@@ -83,12 +83,26 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
 
     /* 2-b) 지원사업 과제 — kind='지원사업' 채권은 과제가 반드시 붙어야 한다
             (receivable_project_required 제약). 샘플용 과제를 하나 만들어 묶는다. */
+    // 기간 한가운데쯤 끝나는 과제로 둔다 — 정산(+1개월)이 기간 안에 들어오도록
+    const sampleProjectEnd = (() => {
+      const [y, m, d] = data.defaults.startDate.split('-').map(Number);
+      const t = new Date(Date.UTC(y as number, (m as number) - 1, d as number));
+      t.setUTCMonth(t.getUTCMonth() + 2);
+      return t.toISOString().slice(0, 10);
+    })();
+
     let supportProjectId: string | null = null;
     if (data.receivables.some((r) => r.kind === '지원사업')) {
       const { data: proj, error: pErr } = await supabase
         .from('projects')
         .upsert(
-          { org_id: orgId, name: '샘플 지원사업', entity_id: someEntity },
+          {
+            org_id: orgId,
+            name: '샘플 지원사업',
+            entity_id: someEntity,
+            // 정산금은 협약 종료일 + 1개월에 들어온다고 본다
+            end_date: sampleProjectEnd,
+          },
           { onConflict: 'org_id,name' },
         )
         .select('id')
@@ -184,6 +198,7 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
           org_id: orgId,
           entity_id: e,
           item: x.item,
+          category: x.category ?? null,
           planned_on: x.date,
           amount: x.amount,
           exec_state: x.execState,

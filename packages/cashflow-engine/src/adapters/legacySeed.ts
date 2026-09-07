@@ -21,7 +21,15 @@ export interface LegacySeed {
   execRate: number;
   fixed: Array<{ item: string; amt: number; day: number; share?: number }>;
   // `on` 은 legacy 가 붙여 두지만 run() 이 읽지 않는 죽은 필드라 옮기지 않는다.
-  oneoff: Array<{ item: string; date: string; amt: number; corp?: string; id?: string }>;
+  oneoff: Array<{
+    item: string;
+    date: string;
+    amt: number;
+    corp?: string;
+    id?: string;
+    /** 성격 — 제출 양식에서 받는 값 */
+    cat?: string;
+  }>;
   /** 매출채권 집계. 프로토타입은 총액만 갖고 개별 행은 회수예정일이 있는 건만 갖는다. */
   ar?: { total: number; neg?: Array<{ 법인: string; 거래처: string; 잔액: number }> };
   __demo_pipeline__?: Array<{ corp: string; name: string; stage: string; cat?: string; amt: number; due: string; rate?: number }>;
@@ -148,6 +156,7 @@ export function legacyExpenses(seed: LegacySeed): Expense[] {
     amount: o.amt,
     entity: o.corp ?? ZEUS,
     execState: '집행',
+    category: o.cat,
   }));
 }
 

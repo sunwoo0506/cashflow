@@ -167,8 +167,7 @@ function Aging() {
           <>법인을 고르면 「회수예정일 미정」 역산분은 어느 법인에도 속하지 않아 총액 대조를 하지 않습니다.</>
         )}{' '}
         「회수예정일 미정」은 아직 날짜가 안 잡힌 몫이라 경과일을 따질 수 없어 별도 칸에 회색으로
-        둡니다. 청구 전(<Badge>청구전</Badge>) 건은 연령분석에서 제외합니다 — 청구도 안 한 건에
-        연체는 의미가 없습니다.
+        둡니다. 청구 전(<Badge>청구전</Badge>) 건은 연령분석에서 제외합니다.
       </AssumedNote>
     </Card>
   );
@@ -275,6 +274,7 @@ function SupportProgress() {
   const remaining = u ? u.receivableTotal - u.plannedDeduction : 0;
   const expected = u ? Math.round(remaining * u.execRate) : 0;
   // 미수령·진행률은 '정산 청구액' 이 아니라 **수금 계획액** 대비다 (프로토타입과 같은 기준).
+  const months = Object.keys(u?.undatedAllocation ?? {});
   const outstanding = Math.max(0, support.planned - support.received);
   const progress = support.planned ? support.received / support.planned : 0;
 
@@ -317,9 +317,22 @@ function SupportProgress() {
 
       <AssumedNote>
         「예상 회수 가능」은 잔여 채권 {fmt(remaining)}원에 집행률{' '}
-        {u ? pct(u.execRate) : '-'}를 곱한 <Badge tone="warn">추정</Badge> 값입니다. 현금흐름에는 이
-        금액이 월별 배분 비율로 나뉘어 들어갑니다. 연령분석의 「회수예정일 미정」과는 모수와 집행률
-        반영 여부가 달라 값이 다릅니다.
+        {u ? pct(u.execRate) : '-'}를 곱한 <Badge tone="warn">추정</Badge> 값입니다.
+        {months.length > 0 ? (
+          <>
+            {' '}
+            현금흐름에는 <b className="text-secondary">과제의 정산 예정일</b>(적혀 있지 않으면 협약
+            종료일 + 1개월)에 맞춰 {months.join(' · ')}에 나뉘어 들어갑니다. 정산 시점이 기간을 넘는
+            과제는 넣지 않습니다 — 내년에 들어올 돈을 올해 런웨이에 넣지 않기 위해서입니다.
+          </>
+        ) : (
+          <>
+            {' '}
+            과제에 종료일·정산 예정일이 없어 <b className="text-secondary">월별 배분 가정값</b>으로
+            나눠 넣습니다. 과제에 날짜를 적으면 그 날짜로 잡힙니다.
+          </>
+        )}{' '}
+        연령분석의 「회수예정일 미정」과는 모수와 집행률 반영 여부가 달라 값이 다릅니다.
       </AssumedNote>
     </Card>
   );

@@ -36,7 +36,7 @@ interface Row {
 export async function getOrgDataset(orgId: string): Promise<Dataset> {
   const supabase = await createClient();
 
-  const [entitiesRes, cpRes, recRes, oppRes, fcRes, expRes, asmRes] = await Promise.all([
+  const [entitiesRes, cpRes, recRes, oppRes, fcRes, expRes, asmRes, projRes] = await Promise.all([
     supabase.from('entities').select('id, name, short_name').eq('org_id', orgId),
     supabase
       .from('counterparties')
@@ -45,7 +45,7 @@ export async function getOrgDataset(orgId: string): Promise<Dataset> {
     supabase
       .from('receivables')
       .select(
-        'id, entity_id, counterparty_id, kind, stage, issued_on, due_on, terms_days, amount_billed, amount_collected, amount_open, status',
+        'id, entity_id, counterparty_id, project_id, kind, stage, issued_on, due_on, terms_days, amount_billed, amount_collected, amount_open, status',
       )
       .eq('org_id', orgId),
     supabase
@@ -68,6 +68,10 @@ export async function getOrgDataset(orgId: string): Promise<Dataset> {
       .eq('org_id', orgId)
       .order('created_at', { ascending: false })
       .limit(1),
+    supabase
+      .from('projects')
+      .select('id, name, end_date, settlement_due')
+      .eq('org_id', orgId),
   ]);
 
   const entityById = new Map<string, string>();
@@ -109,6 +113,12 @@ export async function getOrgDataset(orgId: string): Promise<Dataset> {
   const weeks = (asm?.weeks as number | undefined) ?? DEFAULTS.weeks;
   const openingCash = Number(asm?.opening_cash ?? DEFAULTS.openingCash);
   const warnLine = Number(asm?.warn_line ?? DEFAULTS.warnLine);
+
+  const { spans } = buildWeeks(startDate, weeks);
+  const isoOf = (d: Date): string =>
+    `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  const periodStart = spans.length ? isoOf(spans[0]!.start) : startDate;
+  const periodEnd = spans.length ? isoOf(spans[spans.length - 1]!.end) : startDate;
 
   /* ── 채권 ──────────────────────────────────────────────────── */
   const LIVE = new Set(['open', 'partial']);
@@ -169,13 +179,8 @@ export async function getOrgDataset(orgId: string): Promise<Dataset> {
 
   /* ── 일회성 지출 ───────────────────────────────────────────── */
   // deferred_to 는 날짜다. 엔진은 주차 코드를 받으므로 같은 규칙으로 주를 찾아 넘긴다.
-  const { spans } = buildWeeks(startDate, weeks);
   const weekCodeOf = (iso: string): string | null => {
-    const found = spans.find((w) => {
-      const s = `${w.start.getUTCFullYear()}-${String(w.start.getUTCMonth() + 1).padStart(2, '0')}-${String(w.start.getUTCDate()).padStart(2, '0')}`;
-      const e = `${w.end.getUTCFullYear()}-${String(w.end.getUTCMonth() + 1).padStart(2, '0')}-${String(w.end.getUTCDate()).padStart(2, '0')}`;
-      return iso >= s && iso <= e;
-    });
+    const found = spans.find((w) => iso >= isoOf(w.start) && iso <= isoOf(w.end));
     return found ? found.code : 'out'; // 기간 밖이면 연내 미집행
   };
 
@@ -189,6 +194,62 @@ export async function getOrgDataset(orgId: string): Promise<Dataset> {
     deferToWeek: e.deferred_to ? weekCodeOf(e.deferred_to as string) : null,
     category: (e.category as string | null) ?? undefined,
   }));
+
+  /*
+   * ── 지원사업 정산 시점 ─────────────────────────────────────
+   * 임의의 월별 비율로 흩뿌리지 않고 **과제에서 계산한다.**
+   *   정산 예정일(settlement_due) 이 있으면 그 날,
+   *   없으면 협약 종료일(end_date) + 1개월.
+   * 기간 밖으로 나가는 과제는 현금흐름에서 뺀다 — 내년에 들어올 돈을 올해 런웨이에 넣지 않는다.
+   *
+   * 과제에 날짜가 하나도 없으면 가정값(undatedAllocation)을 그대로 쓴다.
+   */
+  const plusOneMonth = (iso: string): string => {
+    const [y, m, d] = iso.split('-').map(Number);
+    const t = new Date(Date.UTC(y as number, (m as number) - 1, d as number));
+    t.setUTCMonth(t.getUTCMonth() + 1);
+    return t.toISOString().slice(0, 10);
+  };
+
+  const projects = ((projRes.data ?? []) as Row[]).map((p) => {
+    const due =
+      (p.settlement_due as string | null) ??
+      (p.end_date ? plusOneMonth(p.end_date as string) : null);
+    return { id: p.id as string, name: p.name as string, due };
+  });
+
+  // 과제별 남은 지원사업 채권으로 무게를 준다 (없으면 고르게)
+  const weightByProject = new Map<string, number>();
+  for (const r of rawRec) {
+    if (r.kind !== '지원사업' || !r.project_id) continue;
+    const k = r.project_id as string;
+    weightByProject.set(k, (weightByProject.get(k) ?? 0) + Math.round(Number(r.amount_open ?? 0)));
+  }
+
+  const dated = projects.filter((p) => p.due && p.due >= periodStart && p.due <= periodEnd);
+  let settlementByMonth: Record<string, number> | null = null;
+  if (dated.length > 0) {
+    const acc: Record<string, number> = {};
+    let total = 0;
+    for (const p of dated) {
+      const w = weightByProject.get(p.id) ?? 1;
+      const month = `${Number(p.due!.slice(5, 7))}월`;
+      acc[month] = (acc[month] ?? 0) + w;
+      total += w;
+    }
+    if (total > 0) {
+      settlementByMonth = Object.fromEntries(
+        Object.entries(acc).map(([m, w]) => [m, w / total]),
+      );
+    }
+  }
+
+  if (settlementByMonth && assumptions.undatedReceivables) {
+    assumptions.undatedReceivables = {
+      ...assumptions.undatedReceivables,
+      undatedAllocation: settlementByMonth,
+    };
+  }
 
   /* ── 집계는 저장하지 않는다. 항상 행에서 뽑는다 (CLAUDE.md 규칙 3) ── */
   const billed = receivables.filter((r) => r.stage === '청구완료');

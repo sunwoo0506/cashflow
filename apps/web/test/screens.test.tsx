@@ -195,9 +195,26 @@ describe('탭 ④ 나갈 돈', () => {
     expect(hasNumber(GOLDEN.g1.totalOut)).toBe(true);
   });
 
-  it('성격 열이 없으면 이름으로 추측하지 않고 그렇게 말한다', () => {
+  it('성격별 월별 누계가 나온다 (제출 양식에서 받은 값만 쓴다)', () => {
     show('tab=out');
-    expect(document.body.textContent).toContain('항목 이름으로 추측하지 않고');
+    const card = screen.getByText('고정비 외 지출건 월별 누계').closest('section')!;
+    const txt = card.textContent ?? '';
+    // 샘플에는 성격이 들어 있다
+    expect(txt).toContain('성격');
+    expect(/매입|금융|인건비|물류/.test(txt)).toBe(true);
+    // 이름으로 추측하지 않는다는 원칙은 「미기재」 처리로 남는다
+    expect(txt).not.toContain('항목 이름으로 추측하지 않고 월별 합계만');
+  });
+
+  it('고정비는 법인별 부담액을 금액으로 보여준다', () => {
+    show('tab=out');
+    const card = screen.getByText('고정비 내역').closest('section')!;
+    const txt = card.textContent ?? '';
+    expect(txt).toContain('법인A 부담');
+    expect(txt).toContain('법인B 부담');
+    // 급여 92,000,000 의 45% = 41,400,000
+    expect(txt).toContain((41_400_000).toLocaleString('ko-KR'));
+    expect(txt).toContain('배분은 법인별로 따로 계산됩니다');
   });
 });
 
