@@ -22,6 +22,8 @@ function LoginForm() {
   const [code, setCode] = useState('');
   const [phase, setPhase] = useState<Phase>('email');
   const [busy, setBusy] = useState(false);
+  /** 링크가 돌아올 주소. Supabase 허용 목록에 없으면 Site URL 로 튕긴다 */
+  const [callbackOrigin, setCallbackOrigin] = useState<string | null>(null);
   // 콜백에서 실패해 돌아온 경우 그 이유를 그대로 보여준다
   const [error, setError] = useState<string | null>(params.get('error'));
 
@@ -43,6 +45,7 @@ function LoginForm() {
         },
       });
       if (error) throw error;
+      setCallbackOrigin(window.location.origin);
       setPhase('sent');
     } catch (err) {
       setError(err instanceof Error ? err.message : '메일을 보내지 못했습니다');
@@ -135,13 +138,24 @@ function LoginForm() {
             <br />
             메일이 안 보이면 스팸함을 확인해 주세요.
           </p>
+          {callbackOrigin && (
+            <p className="mt-2 rounded-lg bg-surface-2 px-2.5 py-2 text-[11.5px] leading-relaxed text-muted">
+              링크는 <b className="text-secondary">{callbackOrigin}</b> 으로 돌아옵니다.
+              <br />
+              다른 주소로 열린다면 Supabase 의 <b>Redirect URLs</b> 에 이 주소가 없는 것입니다.
+            </p>
+          )}
           <div className="mt-3 flex flex-col gap-2">
             <button
               onClick={() => setPhase('code')}
               className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-[13px] font-[550]"
             >
-              링크 대신 인증코드 입력하기
+              메일에 6자리 코드가 함께 왔다면 입력하기
             </button>
+            <p className="text-[11.5px] leading-relaxed text-muted">
+              코드는 메일 서식에 <code>{'{{ .Token }}'}</code> 이 들어 있을 때만 옵니다. 링크만
+              왔다면 위 링크를 눌러 주세요.
+            </p>
             <button
               onClick={() => {
                 setPhase('email');
@@ -177,7 +191,14 @@ function LoginForm() {
           >
             {busy ? '확인 중…' : '로그인'}
           </button>
-          {error && <p className="mt-2 text-[12.5px] text-crit">{error}</p>}
+          {error && (
+            <p className="mt-2 text-[12.5px] leading-relaxed text-crit">
+              {error}
+              <span className="mt-1 block text-secondary">
+                메일에 코드가 없다면 이 방법은 쓸 수 없습니다. 메일의 링크를 눌러 주세요.
+              </span>
+            </p>
+          )}
           <button
             type="button"
             onClick={() => setPhase('sent')}
