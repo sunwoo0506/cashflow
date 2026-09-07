@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentOrg, getUserEmail, listEntities, listMembers, listMyOrgs } from '@/lib/org';
 import { SampleDataButton } from '@/components/sample-data';
+import { PasswordForm } from '@/components/password-form';
 import { getOrgDataset } from '@/lib/data';
 import {
   CreateOrgForm,
@@ -79,8 +80,9 @@ export default async function SettingsPage() {
           <CreateOrgForm compact />
         </SettingsCard>
 
-        <SettingsCard title="계정">
-          <p className="text-[13px] text-secondary">{email}</p>
+        <SettingsCard title="계정" sub="비밀번호를 정해 두면 메일 없이 로그인할 수 있습니다">
+          <p className="mb-3 text-[13px] text-secondary">{email}</p>
+          <PasswordForm />
           <form action="/auth/signout" method="post" className="mt-2">
             <button className="rounded-lg border border-line bg-surface-2 px-3 py-1.5 text-[12.5px] font-[550]">
               로그아웃
