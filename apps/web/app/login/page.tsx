@@ -66,7 +66,22 @@ function LoginForm() {
           email: email.trim(),
           password,
         });
-        if (error) throw error;
+        if (error) {
+          // 이미 있는 계정이면 가입이 아니라 로그인을 해야 한다
+          if (/already registered|already been registered/i.test(error.message)) {
+            setSignUp(false);
+            throw new Error('이미 가입된 주소입니다. 아래에서 비밀번호로 로그인해 주세요.');
+          }
+          // 가입은 확인 메일을 보내므로 발송 한도에 걸릴 수 있다
+          if (/rate limit/i.test(error.message)) {
+            throw new Error(
+              '메일 발송 한도에 걸렸습니다. 가입은 확인 메일을 보내기 때문입니다. ' +
+                '이미 계정이 있다면 「로그인하기」로 바꿔 주세요. ' +
+                '(관리자: Supabase → Authentication → Providers → Email 에서 Confirm email 을 끄면 메일 없이 가입됩니다)',
+            );
+          }
+          throw error;
+        }
         if (data.session) {
           window.location.href = next;
           return;
@@ -78,7 +93,17 @@ function LoginForm() {
           email: email.trim(),
           password,
         });
-        if (error) throw error;
+        if (error) {
+          // 메일 링크로 만든 계정은 비밀번호가 없다
+          if (/invalid login credentials/i.test(error.message)) {
+            throw new Error(
+              '이메일 또는 비밀번호가 맞지 않습니다. ' +
+                '메일 링크로 만든 계정이라면 아직 비밀번호가 없습니다 — ' +
+                '로그인 후 「회사 설정 → 계정」에서 정할 수 있습니다.',
+            );
+          }
+          throw error;
+        }
         window.location.href = next;
       }
     });
@@ -223,8 +248,17 @@ function LoginForm() {
               </button>
 
               <p className="mt-2 text-[11.5px] leading-relaxed text-muted">
-                비밀번호 로그인은 메일을 보내지 않아{' '}
-                <b className="text-secondary">발송 한도에 걸리지 않습니다</b>.
+                {signUp ? (
+                  <>
+                    가입은 <b className="text-secondary">확인 메일을 보낼 수 있어</b> 발송 한도에
+                    걸릴 수 있습니다. 이미 계정이 있다면 아래에서 로그인으로 바꿔 주세요.
+                  </>
+                ) : (
+                  <>
+                    비밀번호 <b className="text-secondary">로그인</b>은 메일을 보내지 않아 발송
+                    한도와 무관합니다.
+                  </>
+                )}
               </p>
             </form>
           ) : phase === 'form' ? (
