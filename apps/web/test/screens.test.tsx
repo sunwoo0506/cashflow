@@ -182,12 +182,11 @@ describe('탭 ③ 받을 돈 — 연령분석 회귀 방지', () => {
 });
 
 describe('탭 ④ 나갈 돈', () => {
-  it('고정비 9건과 배분 100% 검증이 뜬다', () => {
+  it('법인별 고정비 9건이 각각 나온다', () => {
     show('tab=out');
-    const card = screen.getByText('고정비 내역').closest('section')!;
-    // 9건 + 합계행
-    expect(within(card).getAllByRole('row').length).toBe(1 + 9 + 1);
-    expect(within(card).getAllByText('100%').length).toBe(9);
+    const a = screen.getByText('고정비 내역 · 법인A').closest('section')!;
+    // 머리글 + 9건 + 합계행
+    expect(within(a).getAllByRole('row').length).toBe(1 + 9 + 1);
   });
 
   it('총유출이 G1 값과 같다', () => {
@@ -206,15 +205,24 @@ describe('탭 ④ 나갈 돈', () => {
     expect(txt).not.toContain('항목 이름으로 추측하지 않고 월별 합계만');
   });
 
-  it('고정비는 법인별 부담액을 금액으로 보여준다', () => {
+  it('고정비를 법인별로 따로 보여준다', () => {
     show('tab=out');
-    const card = screen.getByText('고정비 내역').closest('section')!;
+    // 법인마다 카드가 하나씩
+    expect(screen.getByText('고정비 내역 · 법인A')).toBeTruthy();
+    expect(screen.getByText('고정비 내역 · 법인B')).toBeTruthy();
+
+    const a = screen.getByText('고정비 내역 · 법인A').closest('section')!;
+    // 급여 92,000,000 의 45% = 41,400,000 — 그 법인이 실제로 부담하는 금액
+    expect(a.textContent).toContain((41_400_000).toLocaleString('ko-KR'));
+    expect(document.body.textContent).toContain('법인마다 따로');
+  });
+
+  it('고정비 외 지출은 고른 기간의 것만 보여준다', () => {
+    show('tab=out');
+    const card = screen.getByText('고정비 외 지출건').closest('section')!;
     const txt = card.textContent ?? '';
-    expect(txt).toContain('법인A 부담');
-    expect(txt).toContain('법인B 부담');
-    // 급여 92,000,000 의 45% = 41,400,000
-    expect(txt).toContain((41_400_000).toLocaleString('ko-KR'));
-    expect(txt).toContain('배분은 법인별로 따로 계산됩니다');
+    expect(txt).toContain('이 주에 잡힌');
+    expect(txt).toContain('이 주 집행액');
   });
 });
 

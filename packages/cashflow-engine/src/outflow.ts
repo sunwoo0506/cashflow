@@ -1,7 +1,7 @@
 import { daysInMonth, parseISO, toISO, utc } from './calendar';
 import { won } from './money';
 import { firstSegmentOfWeek, segmentIndexOf, type Segment, type WeekSpan } from './periods';
-import type { CashflowInput, OutflowItem } from './types';
+import type { CashflowInput, ExecState, OutflowItem } from './types';
 
 export interface OutflowLog {
   /** 기간 밖으로 밀려 연내 집행되지 않는 건 — 계산에서 빼고 기록만 남긴다 */
@@ -36,16 +36,23 @@ export function placeOutflows(
       const amount = won(f.amount * share);
       if (amount <= 0) continue;
 
-      const i = segmentIndexOf(segments, d);
-      segments[i]!.fixedCost += amount;
-      segments[i]!.outflows.push({
-        kind: '고정비',
-        name: f.item,
-        entity: input.entityFilter ?? '전체',
-        amount,
-        date: toISO(d),
-        placement: '집행',
-      });
+      const srcSeg = segmentIndexOf(segments, d);
+      // 그 달에 미루거나 건너뛴 기록이 있으면 따른다. 없으면 그대로 집행.
+      const state = f.monthlyState?.[`${m}월`];
+      place(
+        {
+          kind: '고정비',
+          name: f.item,
+          entity: input.entityFilter ?? '전체',
+          amount,
+          date: toISO(d),
+          expenseId: f.id,
+        },
+        srcSeg,
+        state?.execState ?? '집행',
+        state?.deferToWeek ?? null,
+        'fixedCost',
+      );
     }
   }
 
@@ -55,31 +62,51 @@ export function placeOutflows(
     if (d < horizonStart || d > horizonEnd) continue;
     if (!inEntity(e.entity)) continue;
 
-    const amount = won(e.amount);
-    const srcSeg = segmentIndexOf(segments, d);
-    const base: Omit<OutflowItem, 'placement'> = {
-      kind: '기타 지출',
-      name: e.item,
-      entity: e.entity,
-      amount,
-      date: e.date,
-      expenseId: e.id,
-    };
+    place(
+      {
+        kind: '기타 지출',
+        name: e.item,
+        entity: e.entity,
+        amount: won(e.amount),
+        date: e.date,
+        expenseId: e.id,
+      },
+      segmentIndexOf(segments, d),
+      e.execState,
+      e.deferToWeek ?? null,
+      'expense',
+    );
+  }
 
-    if (e.execState === '취소') {
+  return log;
+
+  /**
+   * 집행 · 연기 · 취소를 한 곳에서 처리한다.
+   * 고정비와 일회성이 같은 규칙을 따라야 한다 — 따로 쓰면 언젠가 갈라진다.
+   */
+  function place(
+    base: Omit<OutflowItem, 'placement'>,
+    srcSeg: number,
+    execState: ExecState,
+    deferToWeek: string | null,
+    bucket: 'fixedCost' | 'expense',
+  ): void {
+    if (base.amount <= 0) return;
+
+    if (execState === '취소') {
       const rec: OutflowItem = { ...base, placement: '취소' };
       segments[srcSeg]!.outflows.push(rec);
       log.cancelled.push(rec);
-      continue;
+      return;
     }
 
-    if (e.execState === '연기') {
+    if (execState === '연기') {
       const srcWeek = segments[srcSeg]!.weekIndex;
       let targetWeek: number;
-      if (e.deferToWeek === 'out') {
+      if (deferToWeek === 'out') {
         targetWeek = weeks.length + 99; // 연내 미집행
-      } else if (e.deferToWeek) {
-        const j = weeks.findIndex((w) => w.code === e.deferToWeek);
+      } else if (deferToWeek) {
+        const j = weeks.findIndex((w) => w.code === deferToWeek);
         // 과거로는 못 미룬다 — 뒤가 아니면 기본 지연 주수를 쓴다.
         targetWeek = j > srcWeek ? j : srcWeek + (input.assumptions.defaultDeferWeeks || 4);
       } else {
@@ -96,16 +123,14 @@ export function placeOutflows(
 
       if (t >= 0) {
         segments[t]!.outflows.push({ ...base, placement: '이월', from: weeks[srcWeek]!.code });
-        segments[t]!.expense += amount;
+        segments[t]![bucket] += base.amount;
       } else {
         log.deferredOutOfRange.push(moved);
       }
-      continue;
+      return;
     }
 
     segments[srcSeg]!.outflows.push({ ...base, placement: '집행' });
-    segments[srcSeg]!.expense += amount;
+    segments[srcSeg]![bucket] += base.amount;
   }
-
-  return log;
 }

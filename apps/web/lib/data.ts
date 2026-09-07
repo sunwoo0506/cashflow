@@ -36,7 +36,8 @@ interface Row {
 export async function getOrgDataset(orgId: string): Promise<Dataset> {
   const supabase = await createClient();
 
-  const [entitiesRes, cpRes, recRes, oppRes, fcRes, expRes, asmRes, projRes] = await Promise.all([
+  const [entitiesRes, cpRes, recRes, oppRes, fcRes, expRes, asmRes, projRes, runRes] =
+    await Promise.all([
     supabase.from('entities').select('id, name, short_name').eq('org_id', orgId),
     supabase
       .from('counterparties')
@@ -71,6 +72,10 @@ export async function getOrgDataset(orgId: string): Promise<Dataset> {
     supabase
       .from('projects')
       .select('id, name, end_date, settlement_due')
+      .eq('org_id', orgId),
+    supabase
+      .from('fixed_cost_runs')
+      .select('fixed_cost_id, month_start, exec_state, deferred_to')
       .eq('org_id', orgId),
   ]);
 
@@ -157,7 +162,26 @@ export async function getOrgDataset(orgId: string): Promise<Dataset> {
     expectedDate: (o.expected_due_on as string | null) ?? null,
   }));
 
+  // deferred_to 는 날짜다. 엔진은 주차 코드를 받으므로 같은 규칙으로 주를 찾아 넘긴다.
+  const weekCodeOf = (iso: string): string | null => {
+    const found = spans.find((w) => iso >= isoOf(w.start) && iso <= isoOf(w.end));
+    return found ? found.code : 'out'; // 기간 밖이면 연내 미집행
+  };
+
   /* ── 고정비 ────────────────────────────────────────────────── */
+  /* 고정비의 달별 집행 기록. 행이 없으면 「집행」이다 — 평소엔 아무것도 안 적는다. */
+  const runsByCost = new Map<string, Record<string, { execState: Expense['execState']; deferToWeek?: string | null }>>();
+  for (const r of (runRes.data ?? []) as Row[]) {
+    const id = r.fixed_cost_id as string;
+    const month = `${Number(String(r.month_start).slice(5, 7))}월`;
+    const cur = runsByCost.get(id) ?? {};
+    cur[month] = {
+      execState: r.exec_state as Expense['execState'],
+      deferToWeek: r.deferred_to ? weekCodeOf(r.deferred_to as string) : null,
+    };
+    runsByCost.set(id, cur);
+  }
+
   const fixedCosts: FixedCost[] = ((fcRes.data ?? []) as Row[]).map((f) => {
     const shares: Record<string, number> = {};
     for (const s of (f.fixed_cost_shares ?? []) as Row[]) {
@@ -168,21 +192,18 @@ export async function getOrgDataset(orgId: string): Promise<Dataset> {
     if (Object.keys(shares).length === 0 && entityNames.length) {
       for (const n of entityNames) shares[n] = 1 / entityNames.length;
     }
+    const monthlyState = runsByCost.get(f.id as string);
     return {
       id: f.id as string,
       item: f.item as string,
       amount: Math.round(Number(f.monthly_amount ?? 0)),
       payDay: Number(f.pay_day ?? 1),
       shares,
+      ...(monthlyState ? { monthlyState } : {}),
     };
   });
 
   /* ── 일회성 지출 ───────────────────────────────────────────── */
-  // deferred_to 는 날짜다. 엔진은 주차 코드를 받으므로 같은 규칙으로 주를 찾아 넘긴다.
-  const weekCodeOf = (iso: string): string | null => {
-    const found = spans.find((w) => iso >= isoOf(w.start) && iso <= isoOf(w.end));
-    return found ? found.code : 'out'; // 기간 밖이면 연내 미집행
-  };
 
   const expenses: Expense[] = ((expRes.data ?? []) as Row[]).map((e) => ({
     id: e.id as string,

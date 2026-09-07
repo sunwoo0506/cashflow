@@ -191,3 +191,101 @@ describe('G9 · 일회성 지출 연기·취소', () => {
     expect(G.g9.baseTotalOut - G.g9.deferOut.totalOut).toBe(G.g9.targetAmount);
   });
 });
+
+/**
+ * G10 · 고정비 달별 집행상태 (R6)
+ *
+ * 고정비는 「매달 지급일에 그대로 나간다」가 기본이지만, 실제로는 한 달만 미루거나
+ * 건너뛰는 일이 있다. 그 달만 상태를 바꿔도 나머지 달은 그대로여야 한다.
+ * 일회성 지출(G9)과 같은 배치 규칙을 따르는지도 함께 본다.
+ */
+describe('G10 · 고정비 달별 집행상태', () => {
+  /** 임차료 — 매달 1일, 8,500,000. 법인 필터가 없으므로 전액이 잡힌다. */
+  const base = baseInput({ sources: AR_PLUS_NEW });
+  const rent = base.fixedCosts.find((f) => f.item === '임차료')!;
+  const RENT = 8_500_000;
+
+  const withState = (monthlyState: Record<string, { execState: ExecState; deferToWeek?: string | null }>) =>
+    runCashflow({
+      ...base,
+      fixedCosts: base.fixedCosts.map((f) => (f.id === rent.id ? { ...f, monthlyState } : f)),
+    });
+
+  const baseline = withState({});
+  const fixedByWeek = (r: ReturnType<typeof runCashflow>): Record<string, number> =>
+    Object.fromEntries(r.weeks.map((w) => [w.code, w.fixedCost]));
+
+  /** 기본 대비 주별 고정비 변동. 합계만 보면 「옮겨졌다」가 검증되지 않는다. */
+  const delta = (r: ReturnType<typeof runCashflow>): Record<string, number> => {
+    const b = fixedByWeek(baseline);
+    const a = fixedByWeek(r);
+    return Object.fromEntries(
+      Object.keys(a).filter((k) => a[k] !== b[k]).map((k) => [k, a[k]! - b[k]!]),
+    );
+  };
+
+  it('금액 전제 · 임차료는 매달 1일 8,500,000 이다', () => {
+    expect(rent.amount).toBe(RENT);
+    expect(rent.payDay).toBe(1);
+  });
+
+  it('상태를 안 적으면 예전과 똑같다 — 기존 골든값이 흔들리지 않는다', () => {
+    expect(baseline.totalOut).toBe(runCashflow(base).totalOut);
+    expect(baseline.endCash).toBe(runCashflow(base).endCash);
+    expect(delta(baseline)).toEqual({});
+  });
+
+  it('연기 · 기본 4주 → 그 달 지급일 주에서 빠지고 4주 뒤에 더해진다', () => {
+    const r = withState({ '9월': { execState: '연기' } });
+    const d = delta(r);
+    const codes = Object.keys(d).sort();
+    expect(codes).toHaveLength(2);
+    const [from, to] = codes as [string, string];
+    expect(d[from]).toBe(-RENT);
+    expect(d[to]).toBe(RENT);
+    expect(Number(to.slice(1)) - Number(from.slice(1))).toBe(4);
+    // 기간 안에서 옮기기만 하므로 총액은 그대로다
+    expect(r.totalOut).toBe(baseline.totalOut);
+    expect(r.endCash).toBe(baseline.endCash);
+  });
+
+  it('연기 · 주차를 지정하면 그 주로 간다', () => {
+    const r = withState({ '9월': { execState: '연기', deferToWeek: 'W22' } });
+    expect(delta(r)['W22']).toBe(RENT);
+    expect(r.totalOut).toBe(baseline.totalOut);
+  });
+
+  it('취소 → 그 달치만큼 총유출이 줄고 cancelled 로 남는다', () => {
+    const r = withState({ '9월': { execState: '취소' } });
+    expect(baseline.totalOut - r.totalOut).toBe(RENT);
+    expect(r.cancelled.map((o) => o.expenseId)).toEqual([rent.id]);
+    expect(r.deferredOutOfRange).toHaveLength(0);
+    expect(Object.values(delta(r))).toEqual([-RENT]);
+  });
+
+  it('연기 · 기간 밖(out) → 어디에도 안 들어가고 deferredOutOfRange 로 남는다', () => {
+    const r = withState({ '9월': { execState: '연기', deferToWeek: 'out' } });
+    expect(baseline.totalOut - r.totalOut).toBe(RENT);
+    expect(r.deferredOutOfRange.map((o) => o.expenseId)).toEqual([rent.id]);
+    expect(r.cancelled).toHaveLength(0);
+  });
+
+  it('한 달만 건드리면 나머지 달은 그대로다', () => {
+    const one = withState({ '9월': { execState: '취소' } });
+    const two = withState({ '9월': { execState: '취소' }, '10월': { execState: '취소' } });
+    expect(baseline.totalOut - two.totalOut).toBe(RENT * 2);
+    expect(two.cancelled).toHaveLength(2);
+    // 9월분 변동은 두 경우가 같다 — 10월 처리가 9월을 건드리지 않는다
+    const d1 = delta(one);
+    const d2 = delta(two);
+    for (const [k, v] of Object.entries(d1)) expect(d2[k]).toBe(v);
+  });
+
+  it('다른 고정비 항목은 영향받지 않는다', () => {
+    const r = withState({ '9월': { execState: '취소' } });
+    const namesOf = (x: ReturnType<typeof runCashflow>) =>
+      x.weeks.flatMap((w) => w.outflows).filter((o) => o.kind === '고정비' && o.placement === '집행').length;
+    // 임차료 9월 1건만 집행 목록에서 빠진다
+    expect(namesOf(baseline) - namesOf(r)).toBe(1);
+  });
+});

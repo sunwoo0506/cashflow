@@ -63,6 +63,13 @@ export interface FixedCost {
   payDay: number;
   /** 법인별 배분 비율. 합계 1 */
   shares: Record<EntityName, number>;
+  /**
+   * 달마다 집행 상태를 달리 둘 수 있다. 키는 '8월' 같은 달 이름.
+   *
+   * 고정비라도 그 달에 미루거나 건너뛰는 일이 있다. 비워 두면 「집행」이다 —
+   * 즉 이 값이 없으면 지금까지와 똑같이 매달 그대로 나간다.
+   */
+  monthlyState?: Record<string, { execState: ExecState; deferToWeek?: string | null }>;
 }
 
 /**

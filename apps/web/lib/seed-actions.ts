@@ -35,6 +35,22 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
   const supabase = await createClient();
   const data = getFixtureDataset();
 
+  /*
+   * 샘플은 특정 시점(2026-08-13)을 떠 놓은 자료다. 그대로 넣으면
+   * 「기준일이 왜 두 달 전이지」가 되고, 그때 받기로 한 돈이 전부 연체로 잡힌다.
+   * 그래서 **오늘 기준으로 통째로 밀어서** 넣는다. 날짜 사이의 간격은 그대로다.
+   */
+  const today = new Date().toISOString().slice(0, 10);
+  const shiftDays = Math.round(
+    (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${data.asOf}T00:00:00Z`)) / 86400000,
+  );
+  const shift = (iso: string | null): string | null => {
+    if (!iso) return null;
+    const t = Date.parse(`${iso}T00:00:00Z`);
+    if (Number.isNaN(t)) return iso;
+    return new Date(t + shiftDays * 86400000).toISOString().slice(0, 10);
+  };
+
   // 이미 데이터가 있으면 덮지 않는다 — 실제 원장을 지우면 안 된다
   const { count } = await supabase
     .from('receivables')
@@ -88,7 +104,7 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
       const [y, m, d] = data.defaults.startDate.split('-').map(Number);
       const t = new Date(Date.UTC(y as number, (m as number) - 1, d as number));
       t.setUTCMonth(t.getUTCMonth() + 2);
-      return t.toISOString().slice(0, 10);
+      return shift(t.toISOString().slice(0, 10))!;
     })();
 
     let supportProjectId: string | null = null;
@@ -117,6 +133,7 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
         const e = entityId.get(r.entity);
         const c = cpId.get(r.counterparty);
         if (!e || !c || !r.dueDate) return null;
+        const due = shift(r.dueDate)!;
         return {
           org_id: orgId,
           entity_id: e,
@@ -126,8 +143,8 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
           // stage 기본값이 '청구완료' 라서 명시하지 않으면
           // 청구전 행이 receivable_stage_evidence 제약에 걸린다
           stage: r.stage,
-          issued_on: r.stage === '청구완료' ? r.dueDate : null,
-          due_on: r.dueDate,
+          issued_on: r.stage === '청구완료' ? due : null,
+          due_on: due,
           amount_billed: r.amountOpen,
           amount_collected: 0,
           terms_days: r.turnDays ?? null,
@@ -155,7 +172,7 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
           stage: o.salesStage,
           amount_expected: o.amountExpected,
           win_rate_override: o.winRateOverride ?? null,
-          expected_due_on: o.expectedDate,
+          expected_due_on: shift(o.expectedDate)!,
           product_name: o.category ?? null,
         };
       })
@@ -166,6 +183,7 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
     }
 
     /* 5) 고정비 + 법인 배분 */
+    const fixedCostId = new Map<string, string>();
     for (const f of data.fixedCosts) {
       const { data: fc, error } = await supabase
         .from('fixed_costs')
@@ -174,7 +192,7 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
           item: f.item,
           monthly_amount: f.amount,
           pay_day: f.payDay,
-          effective_from: data.defaults.startDate,
+          effective_from: shift(data.defaults.startDate)!,
         })
         .select('id')
         .single();
@@ -187,6 +205,45 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
         })
         .filter(Boolean);
       if (shares.length) await supabase.from('fixed_cost_shares').insert(shares as object[]);
+      fixedCostId.set(f.item, fc.id as string);
+    }
+
+    /*
+     * 5-b) 고정비 집행상태 예시.
+     *
+     * 고정비는 「매달 그대로 나간다」가 기본이라, 기록을 하나도 넣지 않으면
+     * 화면의 집행상태 칸이 전부 「집행」으로만 보인다. 데모에서 미룸·건너뜀이
+     * 어떻게 보이는지 확인할 수 있게 이번 달치로 두 건만 넣어 둔다.
+     */
+    const monthStart = `${today.slice(0, 7)}-01`;
+    const runs = [
+      { item: '임차료', exec_state: '연기', note: '건물주 협의 — 2주 미룸' },
+      { item: '차량유지·유류', exec_state: '취소', note: '이번 달 미집행' },
+    ];
+    const runRows = runs
+      .map((r) => {
+        const id = fixedCostId.get(r.item);
+        if (!id) return null;
+        // 연기는 미룰 날짜가 반드시 있어야 한다 (DB 제약). 지급일에서 2주 뒤로 둔다.
+        const pay = data.fixedCosts.find((f) => f.item === r.item)?.payDay ?? 1;
+        const to = new Date(
+          Date.parse(`${monthStart}T00:00:00Z`) + (pay - 1 + 14) * 86400000,
+        )
+          .toISOString()
+          .slice(0, 10);
+        return {
+          org_id: orgId,
+          fixed_cost_id: id,
+          month_start: monthStart,
+          exec_state: r.exec_state,
+          deferred_to: r.exec_state === '연기' ? to : null,
+          note: r.note,
+        };
+      })
+      .filter(Boolean);
+    if (runRows.length) {
+      const { error } = await supabase.from('fixed_cost_runs').insert(runRows as object[]);
+      if (error) throw error;
     }
 
     /* 6) 일회성 지출 */
@@ -199,7 +256,7 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
           entity_id: e,
           item: x.item,
           category: x.category ?? null,
-          planned_on: x.date,
+          planned_on: shift(x.date)!,
           amount: x.amount,
           exec_state: x.execState,
         };
@@ -214,7 +271,7 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
           샘플 데이터는 특정 시점을 떠 놓은 것이라 그 시점으로 봐야 숫자가 맞는다. */
     const { data: period, error: prErr } = await supabase
       .from('report_periods')
-      .upsert({ org_id: orgId, as_of: data.asOf, label: '샘플 회차' }, { onConflict: 'org_id,as_of' })
+      .upsert({ org_id: orgId, as_of: today, label: '샘플 회차' }, { onConflict: 'org_id,as_of' })
       .select('id')
       .single();
     if (prErr) throw prErr;
@@ -224,7 +281,7 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
       org_id: orgId,
       period_id: period.id,
       name: '샘플',
-      start_date: data.defaults.startDate,
+      start_date: shift(data.defaults.startDate)!,
       weeks: data.defaults.weeks,
       opening_cash: data.defaults.openingCash,
       warn_line: data.defaults.warnLine,
@@ -243,7 +300,7 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
   revalidatePath('/', 'layout');
   return {
     ok: true,
-    message: `샘플 데이터를 넣었습니다 — 채권 ${data.receivables.length}건 · 고정비 ${data.fixedCosts.length}건 · 지출 ${data.expenses.length}건`,
+    message: `샘플 데이터를 넣었습니다 — 채권 ${data.receivables.length}건 · 고정비 ${data.fixedCosts.length}건 · 지출 ${data.expenses.length}건 (오늘 기준으로 맞춰 넣었습니다)`,
   };
 }
 
