@@ -13,12 +13,14 @@ const DEFAULT_ASSUMPTIONS: Omit<Assumptions, 'newSalesShareByEntity'> = {
   defaultDeferWeeks: 4,
 };
 
-const DEFAULTS = { weeks: 22, openingCash: 0, warnLine: 0 };
+// 가정값을 아직 안 넣은 회사는 그 해 1년을 통째로 본다.
+// 엔진이 12/31 에서 끊으므로 53주를 주면 연말까지 딱 맞는다.
+const DEFAULTS = { weeks: 53, openingCash: 0, warnLine: 0 };
 
 /** 오늘 날짜를 기준일로 쓴다. 엔진에는 인자로만 넘어간다 (엔진은 Date.now() 를 모른다). */
 const todayISO = (): string => new Date().toISOString().slice(0, 10);
 
-/** 그 해 1월 1일이 든 주의 월요일 — 기간 시작 기본값 */
+/** 기간 시작 기본값 — 기준일이 속한 해의 1월 1일 */
 const defaultStart = (asOf: string): string => `${asOf.slice(0, 4)}-01-01`;
 
 interface Row {
@@ -43,7 +45,7 @@ export async function getOrgDataset(orgId: string): Promise<Dataset> {
     supabase
       .from('receivables')
       .select(
-        'id, entity_id, counterparty_id, kind, issued_on, due_on, terms_days, amount_billed, amount_collected, amount_open, status',
+        'id, entity_id, counterparty_id, kind, stage, issued_on, due_on, terms_days, amount_billed, amount_collected, amount_open, status',
       )
       .eq('org_id', orgId),
     supabase
@@ -62,7 +64,7 @@ export async function getOrgDataset(orgId: string): Promise<Dataset> {
       .eq('org_id', orgId),
     supabase
       .from('assumption_sets')
-      .select('start_date, weeks, opening_cash, warn_line, params')
+      .select('start_date, weeks, opening_cash, warn_line, params, report_periods(as_of)')
       .eq('org_id', orgId)
       .order('created_at', { ascending: false })
       .limit(1),
@@ -94,7 +96,15 @@ export async function getOrgDataset(orgId: string): Promise<Dataset> {
     ...params,
   };
 
-  const asOf = todayISO();
+  /*
+   * 기준일은 「오늘」이 아니라 **보고 회차의 날짜**다.
+   * 회차가 붙어 있지 않을 때만 오늘로 본다.
+   *
+   * 오늘로 고정하면, 지난 시점을 떠 놓은 자료를 열었을 때
+   * 그 사이에 지난 회수예정일이 전부 「연체」로 당겨져 없던 위험이 만들어진다.
+   */
+  const period = (asm?.report_periods ?? null) as { as_of?: string } | null;
+  const asOf = period?.as_of ?? todayISO();
   const startDate = (asm?.start_date as string | undefined) ?? defaultStart(asOf);
   const weeks = (asm?.weeks as number | undefined) ?? DEFAULTS.weeks;
   const openingCash = Number(asm?.opening_cash ?? DEFAULTS.openingCash);
@@ -111,8 +121,9 @@ export async function getOrgDataset(orgId: string): Promise<Dataset> {
       entity: entityById.get(r.entity_id as string) ?? '(알 수 없음)',
       counterparty: cp?.name ?? '(알 수 없음)',
       kind: (r.kind as Receivable['kind']) ?? '일반매출',
-      // 스키마에 stage 컬럼이 없다. 「세금계산서를 끊었는가」 = issued_on 이 있는가로 가른다.
-      stage: r.issued_on ? '청구완료' : '청구전',
+      // stage 는 0002 에서 추가된 컬럼이다 (청구전 / 청구완료).
+      // 값이 없는 옛 행만 「세금계산서를 끊었는가」 = issued_on 유무로 채운다.
+      stage: (r.stage as Receivable['stage']) ?? (r.issued_on ? '청구완료' : '청구전'),
       status: (r.status as Receivable['status']) ?? 'open',
       amountOpen: Math.round(Number(r.amount_open ?? 0)),
       dueDate: (r.due_on as string | null) ?? null,

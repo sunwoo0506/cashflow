@@ -12,7 +12,12 @@ import {
   SettingsCard,
 } from '@/components/org-forms';
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ created?: string }>;
+}) {
+  const justCreated = (await searchParams).created === '1';
   const orgs = await listMyOrgs();
   if (orgs.length === 0) redirect('/onboarding');
 
@@ -37,6 +42,16 @@ export default async function SettingsPage() {
           {{ owner: '소유자', manager: '관리자', staff: '담당자', viewer: '조회만' }[org.role]}
         </p>
       </header>
+
+      {justCreated && (
+        <div className="mb-3 rounded-[16px] border border-line bg-brand-soft px-4 py-4 text-[13px] leading-relaxed">
+          <b className="text-[14px]">회사를 만들었습니다.</b>
+          <p className="mt-1 text-secondary">
+            이제 <b>법인</b>을 등록하고, <b>샘플 데이터</b>로 둘러보거나 <b>파일 업로드</b>로 실제
+            원장을 넣으면 됩니다. 다 건너뛰고 바로 화면을 봐도 됩니다.
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-col gap-3">
         <SettingsCard title="회사 정보" sub="화면 맨 위에 이 이름이 나옵니다">
@@ -89,6 +104,39 @@ export default async function SettingsPage() {
             </button>
           </form>
         </SettingsCard>
+      </div>
+
+      {/* 설정을 마쳤으면 본 화면으로 — 위쪽 작은 링크만으로는 놓치기 쉽다 */}
+      <div className="mt-4 rounded-[16px] border border-line bg-surface-1 px-4 py-4 sm:px-[18px]">
+        <p className="text-[13px] leading-relaxed text-secondary">
+          {hasData ? (
+            <>설정이 끝났습니다. 자금 현황에서 런웨이를 확인하세요.</>
+          ) : entities.length === 0 ? (
+            <>
+              아직 <b>법인</b>도 <b>자금 데이터</b>도 없습니다. 위에서 법인을 추가하거나, 샘플
+              데이터를 넣어 기능을 먼저 둘러보세요.
+            </>
+          ) : (
+            <>
+              법인은 등록됐습니다. 이제 <b>샘플 데이터</b>를 넣거나 <b>파일 업로드</b>로 실제
+              원장을 넣으면 런웨이가 그려집니다.
+            </>
+          )}
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Link
+            href="/"
+            className="rounded-lg bg-brand-accent px-4 py-2.5 text-[14px] font-[650] text-white"
+          >
+            자금 현황 보기
+          </Link>
+          <Link
+            href="/upload"
+            className="rounded-lg border border-line bg-surface-2 px-4 py-2.5 text-[13.5px] font-[550] text-secondary hover:text-primary"
+          >
+            파일 업로드
+          </Link>
+        </div>
       </div>
     </div>
   );

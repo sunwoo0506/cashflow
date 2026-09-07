@@ -13,7 +13,6 @@ import type { Org } from '@/lib/org-types';
 
 export function Shell({ orgs, org }: { orgs?: Org[]; org?: Org }) {
   const s = useStore();
-  const week = s.result.weeks[s.weekIndex];
 
   return (
     <div className="mx-auto w-full max-w-[1180px] px-3 pb-16 pt-4 sm:px-5">
@@ -89,7 +88,8 @@ export function Shell({ orgs, org }: { orgs?: Org[]; org?: Org }) {
       </main>
 
       <footer className="mt-6 text-[11.5px] leading-relaxed text-muted">
-        기준주차 {week?.code} ({week ? `${week.start} ~ ${week.end}` : '-'}) ·{' '}
+        {s.gran === 'week' ? '기준주차' : '기준 월'} {s.current?.code} (
+        {s.current ? `${s.current.start} ~ ${s.current.end}` : '-'}) ·{' '}
         {s.entity ?? '전체 법인 합산'} · {s.gran === 'week' ? '주간' : '월간'} 보기 · 달성률{' '}
         {Math.round(s.rate * 100)}%
         <br />
@@ -102,7 +102,6 @@ export function Shell({ orgs, org }: { orgs?: Org[]; org?: Org }) {
 function GlobalControls() {
   const s = useStore();
   const weeks = s.result.weeks;
-  const week = weeks[s.weekIndex];
 
   return (
     <div className="noprint mb-3 flex flex-wrap items-center gap-2 rounded-[16px] border border-line bg-surface-1 px-3 py-2.5">
@@ -129,39 +128,56 @@ function GlobalControls() {
         ]}
       />
 
-      <label className="flex items-center gap-1.5 text-[12px] text-secondary">
-        <span className="text-muted">기준주차</span>
-        <select
-          value={s.weekIndex}
-          onChange={(e) => s.set({ weekIndex: Number(e.target.value) })}
-          className="rounded-md border border-line bg-surface-2 px-2 py-1 text-[12.5px]"
-        >
-          {weeks.map((w, i) => (
-            <option key={w.code} value={i}>
-              {w.code} · {w.month} {w.monthWeek}주 ({w.label})
-            </option>
-          ))}
-        </select>
-      </label>
+      {/* 보기 단위에 맞는 것을 고르게 한다 — 월간인데 주차를 고르라고 하면 안 된다 */}
+      {s.gran === 'week' ? (
+        <label className="flex items-center gap-1.5 text-[12px] text-secondary">
+          <span className="text-muted">기준주차</span>
+          <select
+            value={s.weekIndex}
+            onChange={(e) => s.set({ weekIndex: Number(e.target.value) })}
+            className="rounded-md border border-line bg-surface-2 px-2 py-1 text-[12.5px]"
+          >
+            {weeks.map((w, i) => (
+              <option key={w.code} value={i}>
+                {w.code} · {w.month} {w.monthWeek}주 ({w.label})
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <label className="flex items-center gap-1.5 text-[12px] text-secondary">
+          <span className="text-muted">기준 월</span>
+          <select
+            value={s.monthIndex}
+            onChange={(e) => {
+              // 그 달의 첫 주로 기준 시점을 옮긴다
+              const m = s.result.months[Number(e.target.value)];
+              const first = m?.weeks?.[0]?.code;
+              const idx = s.result.weeks.findIndex((w) => w.code === first);
+              if (idx >= 0) s.set({ weekIndex: idx });
+            }}
+            className="rounded-md border border-line bg-surface-2 px-2 py-1 text-[12.5px]"
+          >
+            {s.result.months.map((m, i) => (
+              <option key={m.code} value={i}>
+                {m.month} ({m.label})
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
-      <label className="ml-auto flex min-w-[210px] flex-1 items-center gap-2 text-[12px] sm:flex-none">
-        <span className="text-muted">달성률</span>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={Math.round(s.rate * 100)}
-          onChange={(e) => s.set({ rate: Number(e.target.value) / 100 })}
-          className="h-1 flex-1 accent-[color:var(--brand-accent)] sm:w-28 sm:flex-none"
-          aria-label="달성률"
-        />
-        <span className="num w-9 text-right font-[650]">{Math.round(s.rate * 100)}%</span>
-      </label>
+      {/* 달성률 조작은 「오늘」 탭의 달성률 칸에 있다. 여기서는 지금 값만 알린다. */}
+      <span className="ml-auto flex items-center gap-1.5 text-[12px] text-muted">
+        달성률 <b className="num text-[13px] text-secondary">{Math.round(s.rate * 100)}%</b>
+      </span>
 
-      {week && (
+      {s.current && (
         <p className="w-full text-[11.5px] text-muted">
-          기준주차 {week.code} · {kdate(week.start)}~{kdate(week.end)} · 주말 잔고{' '}
-          <b className="num text-secondary">{fmt(week.cash)}</b>
+          {s.gran === 'week' ? '기준주차' : '기준 월'} {s.current.code} ·{' '}
+          {kdate(s.current.start)}~{kdate(s.current.end)} ·{' '}
+          {s.gran === 'week' ? '주말' : '월말'} 잔고{' '}
+          <b className="num text-secondary">{fmt(s.current.cash)}</b>
         </p>
       )}
     </div>

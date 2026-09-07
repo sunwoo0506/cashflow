@@ -14,6 +14,7 @@ import {
   type AgingResult,
   type CashflowInput,
   type CashflowResult,
+  type Period,
 } from 'cashflow-engine';
 import type { Dataset } from './data';
 
@@ -63,6 +64,10 @@ export interface ViewState {
 interface Store extends Omit<ViewState, 'weekIndex'> {
   /** 실제로 보여줄 주차 (고르지 않았으면 기준일이 속한 주) */
   weekIndex: number;
+  /** 지금 보고 있는 칸 — 주간이면 그 주, 월간이면 그 주가 속한 달 */
+  current: Period | undefined;
+  /** 월간 보기에서 고른 달의 번호 */
+  monthIndex: number;
   data: Dataset;
   result: CashflowResult;
   aging: AgingResult;
@@ -210,9 +215,19 @@ export function StoreProvider({ data, children }: { data: Dataset; children: Rea
   const last = Math.max(0, result.weeks.length - 1);
   const weekIndex = state.weekIndex == null ? asOfWeek : Math.min(state.weekIndex, last);
 
+  // 월간 보기에서는 「그 주가 속한 달」을 보여준다. 기준 시점은 주차 하나로 유지하고
+  // 화면 단위만 바꾼다 — 두 개를 따로 두면 서로 어긋난다.
+  const monthIndex = Math.max(
+    0,
+    result.months.findIndex((m) => m.weeks?.some((w) => w.code === result.weeks[weekIndex]?.code)),
+  );
+  const current = state.gran === 'week' ? result.weeks[weekIndex] : result.months[monthIndex];
+
   const value: Store = {
     ...state,
     weekIndex,
+    current,
+    monthIndex,
     data,
     result,
     aging,

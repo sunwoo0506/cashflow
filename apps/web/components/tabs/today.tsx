@@ -10,7 +10,7 @@ import { AssumedNote, Badge, Card, MoneyTile, TileGrid, Verdict } from '@/compon
 export function TodayTab() {
   const s = useStore();
   const { result, data } = s;
-  const week = result.weeks[s.weekIndex];
+  const week = s.current;
   const v = verdictOf(result, data.defaults.warnLine);
 
   return (
@@ -46,20 +46,26 @@ export function TodayTab() {
       </Verdict>
 
       {/* 1.2 자금 현황 타일 */}
-      <Card title="자금 현황" sub={week ? `${week.code} · ${week.label}` : undefined}>
+      <Card
+        title="자금 현황"
+        sub={week ? `${week.code} · ${week.label} · ${s.gran === 'week' ? '주간' : '월간'}` : undefined}
+      >
         {week && (
           <TileGrid>
-            <MoneyTile label="가용 예산 (주 시작)" value={week.openingCash} />
+            <MoneyTile
+              label={s.gran === 'week' ? '가용 예산 (주 시작)' : '가용 예산 (월 시작)'}
+              value={week.openingCash}
+            />
             <MoneyTile label="들어올 돈" value={week.received} />
             <MoneyTile label="고정비 지출" value={-week.fixedCost} />
             <MoneyTile label="고정비 외 지출" value={-week.expense} />
             <MoneyTile
-              label="주간 손익"
+              label={s.gran === 'week' ? '주간 손익' : '월간 손익'}
               value={week.net}
               tone={week.net < 0 ? 'crit' : 'good'}
             />
             <MoneyTile
-              label="주말 잔고"
+              label={s.gran === 'week' ? '주말 잔고' : '월말 잔고'}
               value={week.cash}
               tone={
                 week.cash < 0 ? 'crit' : week.cash < data.defaults.warnLine ? 'warn' : 'good'
@@ -199,6 +205,24 @@ function RatePresets() {
           );
         })}
       </div>
+      {/* 프리셋 사이 값도 고를 수 있게 — 상단 바에 있던 것을 여기로 옮겼다 */}
+      <label className="mt-3 flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2.5">
+        <span className="shrink-0 text-[12.5px] font-[650]">직접 조절</span>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={5}
+          value={Math.round(s.rate * 100)}
+          onChange={(e) => s.set({ rate: Number(e.target.value) / 100 })}
+          className="h-1 flex-1 accent-[color:var(--brand-accent)]"
+          aria-label="달성률"
+        />
+        <span className="num w-11 shrink-0 text-right text-[14px] font-[750]">
+          {Math.round(s.rate * 100)}%
+        </span>
+      </label>
+
       <AssumedNote>
         현재 {Math.round(s.rate * 100)}%. 매주 계획액의 그만큼만 들어오고 나머지는 다음 주로
         이월됩니다. 기간 말 미회수 <b className="num text-secondary">{fmt(s.result.unpaid)}</b>원.

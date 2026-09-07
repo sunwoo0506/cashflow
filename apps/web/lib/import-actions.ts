@@ -136,7 +136,9 @@ export async function importSubmission(payload: ImportPayload): Promise<ImportRe
             entity_id: e,
             kind: '일반매출',
             title: p.title as string,
-            counterparty_name: (p.counterparty as string) || null,
+            // 거래처 이름이나 id 중 하나는 반드시 있어야 한다 (opp_needs_counterparty).
+            // 파일에 거래처 열이 없으면 건명으로 채운다.
+            counterparty_name: (p.counterparty as string) || (p.title as string),
             stage: p.stage as string,
             amount_expected: p.amountExpected as number,
             win_rate_override: (p.winRate as number) ?? null,

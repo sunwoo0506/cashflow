@@ -10,6 +10,21 @@ export interface SeedResult {
 }
 
 /**
+ * Supabase 오류는 Error 인스턴스가 아니라 { message, details, hint, code } 객체다.
+ * String(err) 로 찍으면 [object Object] 가 되어 무엇이 잘못됐는지 알 수 없다.
+ */
+function describe(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === 'object') {
+    const e = err as Record<string, unknown>;
+    const parts = [e.message, e.details, e.hint].filter(Boolean).map(String);
+    if (parts.length) return parts.join(' · ') + (e.code ? ` (${String(e.code)})` : '');
+    return JSON.stringify(err);
+  }
+  return String(err);
+}
+
+/**
  * 샘플 데이터를 지금 보고 있는 회사에 넣는다.
  *
  * 기능을 눌러 보려면 데이터가 있어야 하는데, 실제 원장을 올리기 전에는 화면이 비어 있다.
@@ -66,6 +81,22 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
     if (cpErr) throw cpErr;
     const cpId = new Map((cps ?? []).map((c) => [c.name as string, c.id as string]));
 
+    /* 2-b) 지원사업 과제 — kind='지원사업' 채권은 과제가 반드시 붙어야 한다
+            (receivable_project_required 제약). 샘플용 과제를 하나 만들어 묶는다. */
+    let supportProjectId: string | null = null;
+    if (data.receivables.some((r) => r.kind === '지원사업')) {
+      const { data: proj, error: pErr } = await supabase
+        .from('projects')
+        .upsert(
+          { org_id: orgId, name: '샘플 지원사업', entity_id: someEntity },
+          { onConflict: 'org_id,name' },
+        )
+        .select('id')
+        .single();
+      if (pErr) throw pErr;
+      supportProjectId = proj.id as string;
+    }
+
     /* 3) 채권 — 청구완료는 발행일을 넣고, 청구전(수주확정)은 비운다 */
     const recRows = data.receivables
       .map((r) => {
@@ -77,6 +108,10 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
           entity_id: e,
           counterparty_id: c,
           kind: r.kind,
+          project_id: r.kind === '지원사업' ? supportProjectId : null,
+          // stage 기본값이 '청구완료' 라서 명시하지 않으면
+          // 청구전 행이 receivable_stage_evidence 제약에 걸린다
+          stage: r.stage,
           issued_on: r.stage === '청구완료' ? r.dueDate : null,
           due_on: r.dueDate,
           amount_billed: r.amountOpen,
@@ -100,6 +135,9 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
           entity_id: e,
           kind: '일반매출',
           title: o.name,
+          // opp_needs_counterparty : 거래처 이름이나 id 중 하나는 있어야 한다.
+          // 샘플에는 건명만 있어 그걸 쓴다.
+          counterparty_name: o.name,
           stage: o.salesStage,
           amount_expected: o.amountExpected,
           win_rate_override: o.winRateOverride ?? null,
@@ -157,9 +195,19 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
       if (error) throw error;
     }
 
-    /* 7) 가정값 — 기간·기초잔액·안전선·신규매출 목표 */
+    /* 7) 보고 회차 — 기준일은 「오늘」이 아니라 이 회차의 날짜다.
+          샘플 데이터는 특정 시점을 떠 놓은 것이라 그 시점으로 봐야 숫자가 맞는다. */
+    const { data: period, error: prErr } = await supabase
+      .from('report_periods')
+      .upsert({ org_id: orgId, as_of: data.asOf, label: '샘플 회차' }, { onConflict: 'org_id,as_of' })
+      .select('id')
+      .single();
+    if (prErr) throw prErr;
+
+    /* 8) 가정값 — 기간·기초잔액·안전선·신규매출 목표 */
     const { error: aErr } = await supabase.from('assumption_sets').insert({
       org_id: orgId,
+      period_id: period.id,
       name: '샘플',
       start_date: data.defaults.startDate,
       weeks: data.defaults.weeks,
@@ -169,8 +217,12 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
     });
     if (aErr) throw aErr;
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, message: `샘플 데이터를 넣지 못했습니다: ${message}` };
+    // 중간에 실패하면 절반만 들어간 채로 남는다. 넣던 것을 도로 지운다.
+    await clearOrgData(orgId).catch(() => undefined);
+    return {
+      ok: false,
+      message: `샘플 데이터를 넣지 못했습니다: ${describe(err)} (넣던 것은 되돌렸습니다)`,
+    };
   }
 
   revalidatePath('/', 'layout');
@@ -189,7 +241,7 @@ export async function clearOrgData(orgId: string): Promise<SeedResult> {
       if (error) throw error;
     }
   } catch (err) {
-    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+    return { ok: false, message: describe(err) };
   }
   revalidatePath('/', 'layout');
   return { ok: true, message: '이 회사의 자금 데이터를 비웠습니다 (법인·거래처는 남습니다)' };
