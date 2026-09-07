@@ -288,6 +288,16 @@ export async function applySampleData(orgId: string): Promise<SeedResult> {
       params: data.assumptions,
     });
     if (aErr) throw aErr;
+
+    /*
+     * 이 회사 자료가 샘플임을 남긴다.
+     *
+     * 샘플은 어느 회사에 넣어도 똑같이 생긴다 — 법인명도 건수도 금액도 같다.
+     * 표시가 없으면 다른 계정으로 로그인했을 때 「자료가 샜다」로 보인다.
+     * 실제로는 회사마다 별개의 행이지만, 화면이 그걸 말해 주지 않으면 알 수 없다.
+     */
+    const { error: mErr } = await supabase.rpc('fn_mark_sample', { p_org: orgId, p_on: true });
+    if (mErr) throw mErr;
   } catch (err) {
     // 중간에 실패하면 절반만 들어간 채로 남는다. 넣던 것을 도로 지운다.
     await clearOrgData(orgId).catch(() => undefined);
@@ -312,6 +322,8 @@ export async function clearOrgData(orgId: string): Promise<SeedResult> {
       const { error } = await supabase.from(t).delete().eq('org_id', orgId);
       if (error) throw error;
     }
+    // 자료를 비웠으니 「샘플」 표시도 내린다
+    await supabase.rpc('fn_mark_sample', { p_org: orgId, p_on: false });
   } catch (err) {
     return { ok: false, message: describe(err) };
   }

@@ -12,10 +12,16 @@ export async function listMyOrgs(): Promise<Org[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('v_my_organizations')
-    .select('id, name, slug, role')
+    .select('id, name, slug, role, sample_seeded_at')
     .order('created_at');
   if (error) return [];
-  return (data ?? []) as Org[];
+  return (data ?? []).map((o) => ({
+    id: o.id as string,
+    name: o.name as string,
+    slug: o.slug as string,
+    role: o.role as Org['role'],
+    sampleSeededAt: (o.sample_seeded_at as string | null) ?? null,
+  }));
 }
 
 /**

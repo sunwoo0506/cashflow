@@ -2,7 +2,7 @@
 
 import clsx from 'clsx';
 import { TABS, useStore } from '@/lib/store';
-import { Seg } from '@/components/ui';
+import { Badge, Seg } from '@/components/ui';
 import { fmt, kdate } from '@/lib/format';
 import { TodayTab } from '@/components/tabs/today';
 import { FlowTab } from '@/components/tabs/flow';
@@ -11,7 +11,7 @@ import { OutflowsTab } from '@/components/tabs/outflows';
 import { OrgSwitcher } from '@/components/org-forms';
 import type { Org } from '@/lib/org-types';
 
-export function Shell({ orgs, org }: { orgs?: Org[]; org?: Org }) {
+export function Shell({ orgs, org, email }: { orgs?: Org[]; org?: Org; email?: string | null }) {
   const s = useStore();
 
   return (
@@ -19,10 +19,24 @@ export function Shell({ orgs, org }: { orgs?: Org[]; org?: Org }) {
       <header className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           {/* 회사 이름은 고정값이 아니다 — 로그인한 사람이 보고 있는 회사가 나온다 */}
-          {orgs && org ? (
-            <OrgSwitcher orgs={orgs} current={org} />
-          ) : (
-            <h1 className="text-[17px] font-[650] leading-tight">자금관리</h1>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {orgs && org ? (
+              <OrgSwitcher orgs={orgs} current={org} />
+            ) : (
+              <h1 className="text-[17px] font-[650] leading-tight">자금관리</h1>
+            )}
+            {/*
+              샘플은 어느 회사에 넣어도 똑같이 생긴다. 표시가 없으면 다른 계정으로
+              로그인했을 때 「자료가 샜다」로 보인다 — 회사마다 별개의 행인데도.
+            */}
+            {org?.sampleSeededAt && <Badge tone="warn">샘플 데이터</Badge>}
+          </div>
+          {/* 지금 누구로 · 어느 회사를 보고 있는지가 한눈에 보여야 한다 */}
+          {email && (
+            <p className="mt-0.5 truncate text-[12px] text-muted">
+              <span className="text-secondary">{email}</span>
+              {org && <> · {org.name}</>}
+            </p>
           )}
           <p className="mt-0.5 text-[12px] text-muted">
             기준 {s.data.asOf} · {s.data.defaults.startDate}부터 {s.data.defaults.weeks}주 ·{' '}

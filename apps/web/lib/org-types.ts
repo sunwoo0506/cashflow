@@ -7,6 +7,8 @@ export interface Org {
   name: string;
   slug: string;
   role: Role;
+  /** 샘플 데이터를 넣은 회사면 그 시각. 화면에 「샘플」 배지를 띄우는 근거. */
+  sampleSeededAt?: string | null;
 }
 
 /** 법인 — 한 회사(org) 아래 여러 법인이 있을 수 있다 */

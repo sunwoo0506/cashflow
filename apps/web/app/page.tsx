@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getCurrentOrg, listMyOrgs } from '@/lib/org';
+import { getCurrentOrg, getUserEmail, listMyOrgs } from '@/lib/org';
 import { getOrgDataset } from '@/lib/data';
 import { StoreProvider } from '@/lib/store';
 import { Shell } from '@/components/shell';
@@ -17,7 +17,7 @@ export default async function Page() {
   if (orgs.length === 0) redirect('/onboarding');
 
   const org = (await getCurrentOrg(orgs))!;
-  const data = await getOrgDataset(org.id);
+  const [data, email] = await Promise.all([getOrgDataset(org.id), getUserEmail()]);
 
   const empty = data.receivables.length === 0 && data.fixedCosts.length === 0;
 
@@ -25,7 +25,7 @@ export default async function Page() {
     <Suspense fallback={<div className="p-6 text-[13px] text-muted">불러오는 중…</div>}>
       <StoreProvider data={data}>
         {empty && <EmptyBanner orgId={org.id} />}
-        <Shell orgs={orgs} org={org} />
+        <Shell orgs={orgs} org={org} email={email} />
       </StoreProvider>
     </Suspense>
   );
