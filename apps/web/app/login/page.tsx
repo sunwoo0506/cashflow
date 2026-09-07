@@ -22,7 +22,8 @@ function LoginForm() {
   const [code, setCode] = useState('');
   const [phase, setPhase] = useState<Phase>('email');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // 콜백에서 실패해 돌아온 경우 그 이유를 그대로 보여준다
+  const [error, setError] = useState<string | null>(params.get('error'));
 
   const configured =
     Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
@@ -78,6 +79,14 @@ function LoginForm() {
           회사 자금 현황과 런웨이를 보는 곳입니다.
         </p>
       </div>
+
+      {params.get('error') && (
+        <div className="mb-3 rounded-[16px] border border-line bg-crit-soft px-4 py-3 text-[12.5px] leading-relaxed text-crit">
+          로그인하지 못했습니다 — {params.get('error')}
+          <br />
+          <span className="text-secondary">메일을 다시 받아 최신 링크를 눌러 주세요.</span>
+        </div>
+      )}
 
       {!configured ? (
         <div className="rounded-[16px] border border-line bg-crit-soft px-4 py-4 text-[13px] leading-relaxed text-crit">
