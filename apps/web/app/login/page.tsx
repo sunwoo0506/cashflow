@@ -43,6 +43,24 @@ function LoginForm() {
     Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
     Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
+  /** Supabase 원문 오류를 무엇을 해야 하는지가 보이는 문장으로 바꾼다 */
+  const explain = (message: string): string => {
+    if (/provider.*disabled|signups are disabled|logins are disabled/i.test(message)) {
+      return (
+        '이메일 로그인이 꺼져 있습니다. ' +
+        '관리자가 Supabase → Authentication → Sign In / Providers → Email 에서 ' +
+        '「Email」 제공자를 켜야 합니다. (확인 메일이 필요 없으면 Confirm email 은 꺼 두세요)'
+      );
+    }
+    if (/rate limit/i.test(message)) {
+      return (
+        '메일 발송 한도에 걸렸습니다. 잠시 뒤 다시 시도하거나, 비밀번호로 로그인해 주세요. ' +
+        '(관리자: Confirm email 을 끄면 가입 시 메일을 보내지 않습니다)'
+      );
+    }
+    return message;
+  };
+
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     setError(null);
@@ -50,7 +68,7 @@ function LoginForm() {
     try {
       await fn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '처리하지 못했습니다');
+      setError(explain(err instanceof Error ? err.message : '처리하지 못했습니다'));
     } finally {
       setBusy(false);
     }
@@ -71,14 +89,6 @@ function LoginForm() {
           if (/already registered|already been registered/i.test(error.message)) {
             setSignUp(false);
             throw new Error('이미 가입된 주소입니다. 아래에서 비밀번호로 로그인해 주세요.');
-          }
-          // 가입은 확인 메일을 보내므로 발송 한도에 걸릴 수 있다
-          if (/rate limit/i.test(error.message)) {
-            throw new Error(
-              '메일 발송 한도에 걸렸습니다. 가입은 확인 메일을 보내기 때문입니다. ' +
-                '이미 계정이 있다면 「로그인하기」로 바꿔 주세요. ' +
-                '(관리자: Supabase → Authentication → Providers → Email 에서 Confirm email 을 끄면 메일 없이 가입됩니다)',
-            );
           }
           throw error;
         }
